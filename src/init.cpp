@@ -998,24 +998,33 @@ bool AppInitParameterInteraction()
     }
 
     // Make sure enough file descriptors are available
-    int nBind = std::max(nUserBind, size_t(1));
-    int nRpcThreads = std::max(gArgs.GetArg("-rpcthreads", DEFAULT_HTTP_THREADS), 1L);
+    const int nBind = std::max(nUserBind, size_t(1));
+    const int nRpcThreads = std::max(gArgs.GetArg("-rpcthreads", DEFAULT_HTTP_THREADS), 1L);
+    const int nUserMinConnections = MAX_OUTBOUND_CONNECTIONS + NUM_FEELER_CONNECTIONS;
+
     nUserMaxConnections = gArgs.GetArg("-maxconnections", DEFAULT_MAX_PEER_CONNECTIONS);
-    nMaxConnections = std::max(nUserMaxConnections, 0);
+    nMaxConnections = std::max(nUserMaxConnections, nUserMinConnections);
+
+    const int nMinFD = MIN_CORE_FILEDESCRIPTORS + MAX_ADDNODE_CONNECTIONS + nUserMinConnections + nBind + nRpcThreads;
 
     // Trim requested connection counts, to fit into system limitations
     // <int> in std::min<int>(...) to work around FreeBSD compilation issue described in #2695
-    nFD = RaiseFileDescriptorLimit(nBind + nRpcThreads + nMaxConnections + MIN_CORE_FILEDESCRIPTORS + MAX_ADDNODE_CONNECTIONS);
+    nFD = RaiseFileDescriptorLimit(nMinFD);
 #ifdef USE_POLL
-    int fd_max = nFD;
+    const int nMaxFD = nFD;
 #else
-    int fd_max = FD_SETSIZE;
+    const int nMaxFD = FD_SETSIZE;
 #endif
-    nMaxConnections = std::max(std::min<int>(nMaxConnections, fd_max - nBind - nRpcThreads - MIN_CORE_FILEDESCRIPTORS - MAX_ADDNODE_CONNECTIONS), 0);
-    if (nFD < MIN_CORE_FILEDESCRIPTORS)
-        return InitError(_("Not enough file descriptors available."));
-    nMaxConnections = std::min(nFD - MIN_CORE_FILEDESCRIPTORS - MAX_ADDNODE_CONNECTIONS, nMaxConnections);
+    nMaxConnections = std::max(std::min<int>(nMaxConnections, nMaxFD - nMinFD), 0);
 
+    LogPrintf("nMinFD=%d nFD=%d nMaxConnections=%d\n", nMinFD, nFD, nMaxConnections);
+
+    // Enforce minimum file descriptors
+    if (nFD < nMinFD)
+        return InitError(_("Not enough file descriptors available."));
+
+    // Display a warning if the number of total maximum connections was lowered
+    nMaxConnections = std::min(nFD - nMinFD, nMaxConnections);
     if (nMaxConnections < nUserMaxConnections)
         InitWarning(strprintf(_("Reducing -maxconnections from %d to %d, because of system limitations."), nUserMaxConnections, nMaxConnections));
 
@@ -1779,7 +1788,7 @@ bool AppInitMain(InitInterfaces& interfaces)
     connOptions.nMaxConnections = nMaxConnections;
     connOptions.nMaxOutbound = std::min(MAX_OUTBOUND_CONNECTIONS, connOptions.nMaxConnections);
     connOptions.nMaxAddnode = MAX_ADDNODE_CONNECTIONS;
-    connOptions.nMaxFeeler = 1;
+    connOptions.nMaxFeeler = NUM_FEELER_CONNECTIONS;
     connOptions.nBestHeight = chain_active_height;
     connOptions.uiInterface = &uiInterface;
     connOptions.m_banman = g_banman.get();
