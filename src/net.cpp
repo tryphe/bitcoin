@@ -1338,7 +1338,7 @@ void CConnman::SocketHandler()
             {
                 // error
                 int nErr = WSAGetLastError();
-                if (nErr != WSAEWOULDBLOCK && nErr != WSAEMSGSIZE && nErr != WSAEINTR && nErr != WSAEINPROGRESS)
+                if (nErr != WSAEWOULDBLOCK && nErr != WSAEMSGSIZE && nErr != WSAEINTR && nErr != WSAEINPROGRESS && nErr != EAGAIN )
                 {
                     if (!pnode->fDisconnect)
                         LogPrintf("socket recv error %s\n", NetworkErrorString(nErr));
